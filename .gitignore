@@ -2,4 +2,7 @@
 doc/
 
 # 결과 파일
-/results
+results/
+
+# input 문서 폴더
+documents/

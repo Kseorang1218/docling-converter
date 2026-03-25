@@ -3,9 +3,9 @@ import logging
 import time
 from pathlib import Path
 
-import torch  # PyTorch 임포트 추가
+import torch
 
-# TensorFloat32 관련 경고를 해결하기 위해 정밀도 설정 변경
+# Use high precision for TF32 matmul to suppress warnings
 torch.set_float32_matmul_precision('high')
 
 from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
@@ -23,10 +23,13 @@ _log = logging.getLogger(__name__)
 def main():
     logging.basicConfig(level=logging.INFO)
 
-    parser = argparse.ArgumentParser(description="PDF를 마크다운으로 변환합니다.")
-    parser.add_argument("input", type=Path, help="변환할 PDF 파일 경로")
+    parser = argparse.ArgumentParser(description="Convert PDF to Markdown.")
+    parser.add_argument("input", type=Path, help="Path to the PDF file to convert")
     parser.add_argument(
-        "-o", "--output", type=Path, default=Path("results"), help="출력 디렉토리 (기본값: results)"
+        "-o", "--output", type=Path, default=Path("results"), help="Output directory (default: results)"
+    )
+    parser.add_argument(
+        "-l", "--lang", nargs="+", default=["en"], help="OCR language(s) (default: en). e.g. -l ko en"
     )
     args = parser.parse_args()
 
@@ -34,7 +37,7 @@ def main():
     output_dir: Path = args.output
 
     if not input_doc_path.exists():
-        _log.error(f"파일을 찾을 수 없습니다: {input_doc_path}")
+        _log.error(f"File not found: {input_doc_path}")
         return
 
     pipeline_options = PdfPipelineOptions()
@@ -44,7 +47,7 @@ def main():
     pipeline_options.do_picture_classification = True
     pipeline_options.images_scale = 2.0
     pipeline_options.table_structure_options = TableStructureOptions(do_cell_matching=True)
-    pipeline_options.ocr_options.lang = ["ko"]
+    pipeline_options.ocr_options.lang = args.lang
     pipeline_options.accelerator_options = AcceleratorOptions(
         num_threads=4, device=AcceleratorDevice.AUTO
     )
@@ -58,36 +61,37 @@ def main():
         }
     )
 
-    _log.info("문서 변환 시작 (이미지 추출 포함)...")
+    _log.info(f"Starting conversion (lang={args.lang})...")
     start_time = time.time()
     try:
         conv_result = doc_converter.convert(input_doc_path)
     except Exception as e:
-        _log.error(f"변환 실패: {e}")
+        _log.error(f"Conversion failed: {e}")
         return
-    _log.info(f"변환 완료: {time.time() - start_time:.2f}초 소요")
+    _log.info(f"Conversion done in {time.time() - start_time:.2f}s")
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     doc_filename = conv_result.input.file.stem
+    output_dir = args.output / doc_filename
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. 이미지 먼저 저장
+    # 1. Save images
     saved_count = 0
     for i, picture in enumerate(conv_result.document.pictures):
         image_save_path = output_dir / f"{doc_filename}_img_{i + 1}.png"
         if picture.image and picture.image.pil_image:
             picture.image.pil_image.save(image_save_path, "PNG")
-            _log.info(f"이미지 저장 성공: {image_save_path}")
+            _log.info(f"Image saved: {image_save_path}")
             saved_count += 1
         else:
-            _log.warning(f"{i + 1}번째 그림 요소를 찾았으나 이미지 데이터가 없습니다.")
+            _log.warning(f"Picture element {i + 1} found but no image data available.")
 
-    _log.info(f"최종 추출된 이미지 개수: {saved_count}")
+    _log.info(f"Total images extracted: {saved_count}")
 
     # 2. Markdown 저장
     md_path = output_dir / f"{doc_filename}.md"
     with md_path.open("w", encoding="utf-8") as fp:
         fp.write(conv_result.document.export_to_markdown())
-    _log.info(f"마크다운 저장 완료: {md_path}")
+    _log.info(f"Markdown saved: {md_path}")
 
 
 if __name__ == "__main__":
