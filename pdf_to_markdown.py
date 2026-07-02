@@ -45,6 +45,8 @@ def main():
     pipeline_options.do_table_structure = True
     pipeline_options.generate_picture_images = True
     pipeline_options.do_picture_classification = True
+    pipeline_options.do_formula_enrichment = True
+    pipeline_options.do_code_enrichment = True
     pipeline_options.images_scale = 2.0
     pipeline_options.table_structure_options = TableStructureOptions(do_cell_matching=True)
     pipeline_options.ocr_options.lang = args.lang
