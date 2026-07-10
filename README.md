@@ -6,6 +6,8 @@
 
 - OCR 기반 PDF to Markdown 변환
 - 표 구조 인식
+- 수식(formula) 인식
+- 코드 블록(code) 인식
 - 이미지 추출 (PNG 저장)
 - 다국어 OCR 지원
 - GPU 자동 감지 및 가속
