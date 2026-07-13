@@ -1,8 +1,10 @@
 # 가상환경
 doc/
+venv-mineru/
 
 # 결과 파일
 results/
+results-mineru/
 
 # input 문서 폴더
 documents/
