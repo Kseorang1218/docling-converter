@@ -17,7 +17,7 @@ from docling.datamodel.pipeline_options import (
     TableStructureOptions,
 )
 from docling.document_converter import DocumentConverter, PdfFormatOption
-from docling_core.types.doc import FormulaItem
+from docling_core.types.doc import FormulaItem, SectionHeaderItem, TitleItem
 
 _log = logging.getLogger(__name__)
 
@@ -26,6 +26,60 @@ _log = logging.getLogger(__name__)
 # 연속 & 이 몇 개를 넘지 않으므로, 이 임계값으로 진짜 폭주 구간만 골라 잘라낸다.
 RUNAWAY_AMP_RE = re.compile(r"(?:&\s*){8,}")
 MAX_FORMULA_LEN = 1500
+
+INVALID_FILENAME_CHARS_RE = re.compile(r'[\\/:*?"<>|]')
+MAX_FILENAME_LEN = 150
+
+
+def _document_title(document) -> str | None:
+    """문서에서 인식된 논문 제목을 찾아 파일명으로 쓸 수 있게 정리한다.
+
+    Docling 레이아웃 모델이 논문 제목을 TitleItem이 아니라 최상위
+    SectionHeaderItem으로 분류하는 경우가 많아(예: arXiv 2단 레이아웃 논문),
+    문서에서 가장 먼저 등장하는 제목류(TitleItem 또는 SectionHeaderItem)
+    아이템을 제목 후보로 본다. 다만 저널명이 1페이지 상단(page_header)에
+    함께 인쇄되는 경우 그 저널명이 제목류로 잘못 분류되기도 하므로, 같은
+    페이지의 page_header와 겹치는 후보는 건너뛴다. (2페이지 이후 헤더에는
+    본문 제목 자체가 반복 인쇄되는 경우가 많아 페이지를 한정한다.)
+    """
+    same_page_headers: dict[int, list[str]] = {}
+    for t in document.texts:
+        if getattr(t, "label", None) == "page_header" and t.prov:
+            same_page_headers.setdefault(t.prov[0].page_no, []).append(t.text.strip())
+
+    title_item = None
+    badge_pending = False
+    for t in document.texts:
+        text = t.text.strip()
+
+        # "PAPER" 같은 배지 바로 다음에 오는 텍스트는, 그것이 헤딩으로
+        # 인식되지 않았더라도(예: 일반 TextItem) 실제 제목일 가능성이 높다.
+        if badge_pending:
+            badge_pending = False
+            if text and len(text) > 15:
+                title_item = t
+                break
+
+        if not isinstance(t, (TitleItem, SectionHeaderItem)) or not text:
+            continue
+        # 일부 저널 템플릿은 "PAPER", "REVIEW ARTICLE" 같은 짧은 전체대문자
+        # 배지를 실제 제목 바로 앞에 별도 헤딩으로 넣으므로 건너뛴다.
+        if len(text) <= 20 and text.isascii() and text.isupper():
+            badge_pending = True
+            continue
+        page_no = t.prov[0].page_no if t.prov else None
+        page_headers = same_page_headers.get(page_no, [])
+        if any(text in ph for ph in page_headers):
+            continue
+        title_item = t
+        break
+
+    if title_item is None:
+        return None
+
+    title = INVALID_FILENAME_CHARS_RE.sub("_", title_item.text.strip())
+    title = re.sub(r"\s+", " ", title)
+    return title[:MAX_FILENAME_LEN].rstrip(" .") or None
 
 
 def main():
@@ -81,7 +135,7 @@ def main():
         return
     _log.info(f"Conversion done in {time.time() - start_time:.2f}s")
 
-    doc_filename = conv_result.input.file.stem
+    doc_filename = _document_title(conv_result.document) or conv_result.input.file.stem
     output_dir = args.output / doc_filename
     output_dir.mkdir(parents=True, exist_ok=True)
 
