@@ -2,6 +2,11 @@
 doc/
 venv-mineru/
 
+# Python 캐시
+__pycache__/
+*.py[cod]
+.test-tmp/
+
 # 결과 파일
 results/
 results-mineru/
