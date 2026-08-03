@@ -72,6 +72,17 @@ class MinerUTitleTests(unittest.TestCase):
     def test_does_not_treat_plain_text_as_heading(self):
         self.assertIsNone(markdown_title("Paper title\nbody"))
 
+    def test_skips_leading_journal_badge_line(self):
+        content = "FOCUS\n\n# One-class classifiers with incremental learning\n\nbody"
+        self.assertEqual(
+            markdown_title(content),
+            "One-class classifiers with incremental learning",
+        )
+
+    def test_gives_up_if_no_heading_within_search_window(self):
+        content = "\n".join(["plain line"] * 10 + ["# Too far down title"])
+        self.assertIsNone(markdown_title(content))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,14 +15,24 @@ DEFAULT_MINERU_BIN = (
     Path(__file__).resolve().parent.parent / "venv-mineru" / "bin" / "mineru"
 )
 MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$")
+TITLE_SEARCH_LINES = 10
 
 
 def markdown_title(content: str) -> str | None:
+    """Find the first markdown heading near the top of the document.
+
+    Some journals prefix the title with a short section badge (e.g. "FOCUS")
+    that MinerU emits as plain text on its own line, so the real heading can
+    be a few lines down rather than on the very first line.
+    """
     stripped = content.lstrip()
     if not stripped:
         return None
-    match = MARKDOWN_HEADING_RE.match(stripped.splitlines()[0])
-    return sanitize_title(match.group(1)) if match else None
+    for line in stripped.splitlines()[:TITLE_SEARCH_LINES]:
+        match = MARKDOWN_HEADING_RE.match(line)
+        if match:
+            return sanitize_title(match.group(1))
+    return None
 
 
 def convert_with_mineru(
