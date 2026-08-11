@@ -92,6 +92,19 @@ def _collapse_broken_formulas(document, stage: Path, name: str) -> int:
     return broken_count
 
 
+def _export_markdown(document) -> str:
+    """Export body content plus page footers, while omitting page headers."""
+    from docling_core.types.doc import ContentLayer, DocItemLabel, ImageRefMode
+    from docling_core.types.doc.document import DOCUMENT_TOKENS_EXPORT_LABELS
+
+    labels = DOCUMENT_TOKENS_EXPORT_LABELS - {DocItemLabel.PAGE_HEADER}
+    return document.export_to_markdown(
+        image_mode=ImageRefMode.REFERENCED,
+        labels=labels,
+        included_content_layers={ContentLayer.BODY, ContentLayer.FURNITURE},
+    )
+
+
 def convert_with_docling(input_path: Path, stage: Path, lang: list[str]) -> str:
     import torch
     from docling.backend.pypdfium2_backend import PyPdfiumDocumentBackend
@@ -102,7 +115,6 @@ def convert_with_docling(input_path: Path, stage: Path, lang: list[str]) -> str:
     from docling.datamodel.base_models import InputFormat
     from docling.datamodel.pipeline_options import PdfPipelineOptions, TableStructureOptions
     from docling.document_converter import DocumentConverter, PdfFormatOption
-    from docling_core.types.doc import ImageRefMode
 
     torch.set_float32_matmul_precision("high")
 
@@ -146,6 +158,6 @@ def convert_with_docling(input_path: Path, stage: Path, lang: list[str]) -> str:
     if broken_count:
         _log.warning("Collapsed runaway repetition in %d formula(s).", broken_count)
 
-    markdown = result.document.export_to_markdown(image_mode=ImageRefMode.REFERENCED)
+    markdown = _export_markdown(result.document)
     (stage / f"{name}.md").write_text(markdown, encoding="utf-8")
     return name

@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import shutil
@@ -16,6 +17,7 @@ DEFAULT_MINERU_BIN = (
 )
 MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+(.+?)\s*$")
 TITLE_SEARCH_LINES = 10
+URL_RE = re.compile(r"(?:https?://|www\.)", re.IGNORECASE)
 
 
 def markdown_title(content: str) -> str | None:
@@ -33,6 +35,50 @@ def markdown_title(content: str) -> str | None:
         if match:
             return sanitize_title(match.group(1))
     return None
+
+
+def append_page_footnotes(content: str, content_list: object) -> tuple[str, int]:
+    """Append page footnotes that MinerU recognized but omitted from Markdown."""
+    if not isinstance(content_list, list):
+        return content, 0
+
+    normalized_content = " ".join(content.split())
+    seen: set[str] = set()
+    notes: list[tuple[int | None, str]] = []
+    for item in content_list:
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        text = item.get("text")
+        if not isinstance(text, str):
+            continue
+
+        note = " ".join(text.split())
+        if not note:
+            continue
+        # MinerU always discards page_footnote blocks. It also discards footer
+        # blocks, so recover those when they contain an author-provided link.
+        if item_type != "page_footnote" and not (
+            item_type == "footer" and URL_RE.search(note)
+        ):
+            continue
+        if note in normalized_content or note in seen:
+            continue
+
+        seen.add(note)
+        page_idx = item.get("page_idx")
+        page_no = page_idx + 1 if isinstance(page_idx, int) else None
+        notes.append((page_no, note))
+
+    if not notes:
+        return content, 0
+
+    lines = ["## Page footnotes", ""]
+    for page_no, note in notes:
+        prefix = f"- Page {page_no}: " if page_no is not None else "- "
+        lines.append(prefix + note)
+    updated = content.rstrip() + "\n\n" + "\n".join(lines) + "\n"
+    return updated, len(notes)
 
 
 def convert_with_mineru(
@@ -69,6 +115,21 @@ def convert_with_mineru(
 
         source_markdown = markdown_candidates[0]
         content = source_markdown.read_text(encoding="utf-8")
+        content_list_path = source_markdown.with_name(
+            f"{source_markdown.stem}_content_list.json"
+        )
+        if content_list_path.is_file():
+            try:
+                content_list = json.loads(content_list_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                _log.warning("Could not read MinerU content list: %s", exc)
+            else:
+                content, footnote_count = append_page_footnotes(content, content_list)
+                _log.info("Page footnotes recovered: %d", footnote_count)
+        else:
+            _log.warning(
+                "MinerU content list not found; page footnotes cannot be recovered."
+            )
         name = document_name(markdown_title(content), input_path)
 
         images_source = source_markdown.parent / "images"
