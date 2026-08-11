@@ -80,6 +80,8 @@ def convert_with_mineru(
             )
         _log.info("Total images extracted: %d", image_count)
 
-        shutil.copyfile(source_markdown, stage / f"{name}.md")
+        (stage / f"{name}.md").write_text(
+            content.replace("\x00", ""), encoding="utf-8"
+        )
         _log.info("Conversion done in %.2fs", time.monotonic() - start_time)
         return name
