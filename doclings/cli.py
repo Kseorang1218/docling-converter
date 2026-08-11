@@ -38,10 +38,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Conversion backend to use (default: docling)",
     )
     parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Replace the title-matched output even when it belongs to another input.",
+        "--no-overwrite",
+        dest="overwrite",
+        action="store_false",
+        help=(
+            "Do not replace a title-matched output that belongs to another "
+            "input; save as a hash-suffixed folder instead."
+        ),
     )
+    parser.set_defaults(overwrite=True)
     return parser
 
 
